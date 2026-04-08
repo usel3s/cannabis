@@ -1,0 +1,28 @@
+{
+  "name": "team-applications-bot",
+  "version": "1.0.0",
+  "description": "Scalable Telegram bot for team applications",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "pm2:start": "pm2 start ecosystem.config.cjs",
+    "pm2:reload": "pm2 reload ecosystem.config.cjs",
+    "pm2:restart": "pm2 restart cannabis-team-bot",
+    "pm2:stop": "pm2 stop cannabis-team-bot",
+    "pm2:logs": "pm2 logs cannabis-team-bot --lines 100",
+    "pm2:save": "pm2 save"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^0.1.68",
+    "axios": "^1.9.0",
+    "dotenv": "^16.4.5",
+    "mongoose": "^8.13.2",
+    "telegraf": "^4.16.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9",
+    "pm2": "^5.4.3"
+  }
+}
