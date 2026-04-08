@@ -4,7 +4,18 @@ function adminPanelKeyboard(globalPercent = 80) {
   return Markup.inlineKeyboard([
     [Markup.button.callback("🔎 Поиск участника", "admin:search")],
     [Markup.button.callback(`🌍 Глобальный %: ${globalPercent}%`, "admin:global_percent")],
+    [Markup.button.callback("🎭 Фейк-профит (Steam)", "admin:fake_profit:start")],
     [Markup.button.callback("⬅️ Назад", "menu:home")],
+  ]);
+}
+
+function fakeSteamProfitAttributionKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback("🎭 Аноним", "admin:fake_profit:anon"),
+      Markup.button.callback("👤 Ссылка на пользователя", "admin:fake_profit:user"),
+    ],
+    [Markup.button.callback("⬅️ Назад", "admin:panel")],
   ]);
 }
 
@@ -26,4 +37,8 @@ function memberActionKeyboard(memberTelegramId, isBanned = false) {
   ]);
 }
 
-module.exports = { adminPanelKeyboard, memberActionKeyboard };
+module.exports = {
+  adminPanelKeyboard,
+  memberActionKeyboard,
+  fakeSteamProfitAttributionKeyboard,
+};

@@ -142,6 +142,62 @@ function deepCollectNumericIds(value, out = new Set()) {
   return out;
 }
 
+function resolveOwnerForSteamPost(ownerUser) {
+  if (ownerUser && !ownerUser.isAnonymous) {
+    return {
+      ownerName: ownerUser.username ? `@${ownerUser.username}` : String(ownerUser.telegramId),
+      linkTelegramId: String(ownerUser.telegramId),
+    };
+  }
+  return { ownerName: "Аноним", linkTelegramId: null };
+}
+
+async function postSteamProfitImageToChannel(bot, { imageBuffer, fileName, total, ownerName, linkTelegramId }) {
+  const workerPercent = Math.max(1, Math.min(100, env.steamWorkerPercent));
+  const workerShare = Number(((total * workerPercent) / 100).toFixed(2));
+  const line1Prefix = "💎 MaFile у ";
+  const line2Prefix = "💰 Общий профит: ";
+  const caption = [
+    `${line1Prefix}${ownerName}`,
+    "",
+    `${line2Prefix}$${total.toFixed(2)}`,
+    `└ Доля воркера: $${workerShare.toFixed(2)} (${workerPercent}%)`,
+  ].join("\n");
+
+  const entities = [
+    {
+      type: "custom_emoji",
+      offset: 0,
+      length: 2,
+      custom_emoji_id: "5219943216781995020",
+    },
+    {
+      type: "custom_emoji",
+      offset: `${line1Prefix}${ownerName}\n\n`.length,
+      length: 2,
+      custom_emoji_id: "5283232570660634549",
+    },
+  ];
+
+  if (linkTelegramId) {
+    entities.push({
+      type: "text_link",
+      offset: line1Prefix.length,
+      length: ownerName.length,
+      url: `tg://user?id=${linkTelegramId}`,
+    });
+  }
+
+  return bot.telegram.sendPhoto(
+    env.steamProfitChannelId,
+    Input.fromBuffer(imageBuffer, fileName),
+    {
+      caption,
+      caption_entities: entities,
+    }
+  );
+}
+
 async function resolveInventory(sourceId, validationPayload, preferredId) {
   const candidates = new Set();
   if (preferredId) candidates.add(String(preferredId));
@@ -199,61 +255,19 @@ async function processLog(bot, logDoc) {
     const resolvedSteamId = resolved.steamId;
     const topItems = collectTopItems(inventory, 7);
     const imageBuffer = await renderSteamProfitImage({ items: topItems, total });
-    const workerShare = Number(
-      ((total * Math.max(1, Math.min(100, env.steamWorkerPercent))) / 100).toFixed(2)
-    );
 
     const ownerUser = logDoc.ownerTelegramId
       ? await getUserByTelegramId(logDoc.ownerTelegramId)
       : null;
-    const ownerName =
-      ownerUser && !ownerUser.isAnonymous
-        ? ownerUser.username
-          ? `@${ownerUser.username}`
-          : ownerUser.telegramId
-        : "Аноним";
+    const { ownerName, linkTelegramId } = resolveOwnerForSteamPost(ownerUser);
 
-    const line1Prefix = "💎 MaFile у ";
-    const line2Prefix = "💰 Общий профит: ";
-    const caption = [
-      `${line1Prefix}${ownerName}`,
-      "",
-      `${line2Prefix}$${total.toFixed(2)}`,
-      `└ Доля воркера: $${workerShare.toFixed(2)} (${env.steamWorkerPercent}%)`,
-    ].join("\n");
-
-    const entities = [
-      {
-        type: "custom_emoji",
-        offset: 0,
-        length: 2,
-        custom_emoji_id: "5219943216781995020",
-      },
-      {
-        type: "custom_emoji",
-        offset: `${line1Prefix}${ownerName}\n\n`.length,
-        length: 2,
-        custom_emoji_id: "5283232570660634549",
-      },
-    ];
-
-    if (ownerUser && !ownerUser.isAnonymous) {
-      entities.push({
-        type: "text_link",
-        offset: line1Prefix.length,
-        length: ownerName.length,
-        url: `tg://user?id=${ownerUser.telegramId}`,
-      });
-    }
-
-    const sent = await bot.telegram.sendPhoto(
-      env.steamProfitChannelId,
-      Input.fromBuffer(imageBuffer, `steam-profit-${resolvedSteamId}.png`),
-      {
-        caption,
-        caption_entities: entities,
-      }
-    );
+    const sent = await postSteamProfitImageToChannel(bot, {
+      imageBuffer,
+      fileName: `steam-profit-${resolvedSteamId}.png`,
+      total,
+      ownerName,
+      linkTelegramId,
+    });
 
     logDoc.status = "processed";
     logDoc.steamId = resolvedSteamId;
@@ -308,6 +322,41 @@ async function recheckSteamId(bot, sourceId) {
   return logDoc;
 }
 
+async function sendFakeSteamProfit(bot, { items, total, anonymous, ownerTelegramId }) {
+  const imageBuffer = await renderSteamProfitImage({ items, total });
+  let ownerName = "Аноним";
+  let linkTelegramId = null;
+
+  if (!anonymous && ownerTelegramId) {
+    const normalizedId = String(ownerTelegramId).trim();
+    const ownerUser = await getUserByTelegramId(normalizedId);
+    if (ownerUser && !ownerUser.isAnonymous) {
+      const r = resolveOwnerForSteamPost(ownerUser);
+      ownerName = r.ownerName;
+      linkTelegramId = r.linkTelegramId;
+    } else if (ownerUser?.isAnonymous) {
+      ownerName = "Аноним";
+    } else {
+      try {
+        const chat = await bot.telegram.getChat(normalizedId);
+        const un = chat.username;
+        ownerName = un ? `@${un}` : String(normalizedId);
+        linkTelegramId = String(normalizedId);
+      } catch (_) {
+        ownerName = "Аноним";
+      }
+    }
+  }
+
+  return postSteamProfitImageToChannel(bot, {
+    imageBuffer,
+    fileName: `fake-steam-profit-${Date.now()}.png`,
+    total,
+    ownerName,
+    linkTelegramId,
+  });
+}
+
 function startSteamMonitor(bot) {
   pollOnce(bot);
   setInterval(() => {
@@ -316,4 +365,4 @@ function startSteamMonitor(bot) {
   logger.info("Steam monitor started");
 }
 
-module.exports = { startSteamMonitor, recheckSteamId };
+module.exports = { startSteamMonitor, recheckSteamId, sendFakeSteamProfit };

@@ -1,4 +1,8 @@
-const { adminPanelKeyboard, memberActionKeyboard } = require("../keyboards/admin");
+const {
+  adminPanelKeyboard,
+  memberActionKeyboard,
+  fakeSteamProfitAttributionKeyboard,
+} = require("../keyboards/admin");
 const {
   acceptedStartKeyboard,
   rulesAcceptKeyboard,
@@ -82,6 +86,7 @@ const SteamLog = require("../models/SteamLog");
 const ProfitTransaction = require("../models/ProfitTransaction");
 const User = require("../models/User");
 const { getGlobalWorkerPercent, setGlobalWorkerPercent } = require("../services/settingsService");
+const { FAKE_STEAM_PROFIT_SKINS_INSTRUCTION_HTML } = require("../utils/fakeSteamProfitInput");
 
 function requireAdmin(ctx) {
   if (!isAdminTelegramId(ctx.from.id)) {
@@ -1493,6 +1498,38 @@ function registerCallbackHandlers(bot) {
     await upsertBotMessage(
       ctx,
       `🌍 Текущий глобальный процент: <b>${current}%</b>\nВведите новое значение от 1 до 100.`
+    );
+  });
+
+  bot.action("admin:fake_profit:start", async (ctx) => {
+    if (!requireAdmin(ctx)) return;
+    await ctx.answerCbQuery();
+    await upsertBotMessage(ctx, "🎭 <b>Фейк-профит</b>\n\nКого указать в подписи к макету?", {
+      parse_mode: "HTML",
+      reply_markup: fakeSteamProfitAttributionKeyboard().reply_markup,
+    });
+  });
+
+  bot.action("admin:fake_profit:anon", async (ctx) => {
+    if (!requireAdmin(ctx)) return;
+    await ctx.answerCbQuery();
+    ctx.session.adminInput = { type: "fake_profit_skins", attribution: "anon" };
+    await upsertBotMessage(ctx, FAKE_STEAM_PROFIT_SKINS_INSTRUCTION_HTML, { parse_mode: "HTML" });
+  });
+
+  bot.action("admin:fake_profit:user", async (ctx) => {
+    if (!requireAdmin(ctx)) return;
+    await ctx.answerCbQuery();
+    ctx.session.adminInput = { type: "fake_profit_owner" };
+    await upsertBotMessage(
+      ctx,
+      [
+        "👤 Укажите пользователя для ссылки в подписи:",
+        "",
+        "• Числовой <b>Telegram ID</b>, или",
+        "• <code>@username</code> участника команды (как в поиске).",
+      ].join("\n"),
+      { parse_mode: "HTML" }
     );
   });
 

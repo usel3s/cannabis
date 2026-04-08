@@ -23,6 +23,9 @@ const {
   buildApprovedChannelSuffix,
 } = require("../services/withdrawalService");
 const { upsertBotMessage } = require("../utils/message");
+const { sendFakeSteamProfit } = require("../services/steamMonitorService");
+const { resolveFakeProfitSevenSkinQueries } = require("../services/steamMarketLookup");
+const { FAKE_STEAM_PROFIT_SKINS_INSTRUCTION_HTML } = require("../utils/fakeSteamProfitInput");
 const {
   sitesBindMethodKeyboard,
   linkCreatorKeyboard,
@@ -303,6 +306,75 @@ function registerTextHandlers(bot) {
         `✅ Процент воркера для <code>${updatedUser.telegramId}</code> обновлен: ${updatedUser.profitPercent}%.`
       );
       ctx.session.adminInput = null;
+      return;
+    }
+
+    if (adminInput?.type === "fake_profit_owner") {
+      let tid = null;
+      const t = text.trim();
+      if (/^\d+$/.test(t)) {
+        tid = t;
+      } else {
+        const query = t.startsWith("@") ? t.slice(1) : t;
+        const results = await searchTeamMembers(query);
+        if (results.length === 0) {
+          await upsertBotMessage(
+            ctx,
+            "❌ Участник не найден. Введите числовой Telegram ID или @username из команды."
+          );
+          return;
+        }
+        if (results.length > 1) {
+          await upsertBotMessage(
+            ctx,
+            "❌ Несколько совпадений. Уточните или введите числовой Telegram ID."
+          );
+          return;
+        }
+        tid = results[0].telegramId;
+      }
+      ctx.session.adminInput = {
+        type: "fake_profit_skins",
+        attribution: "user",
+        ownerTelegramId: tid,
+      };
+      await upsertBotMessage(
+        ctx,
+        [`✅ Пользователь: <code>${tid}</code>`, "", FAKE_STEAM_PROFIT_SKINS_INSTRUCTION_HTML].join("\n"),
+        { parse_mode: "HTML" }
+      );
+      return;
+    }
+
+    if (adminInput?.type === "fake_profit_skins") {
+      await upsertBotMessage(
+        ctx,
+        "⏳ Запрашиваю Steam Market (7 позиций, до ~30 сек)…"
+      );
+      try {
+        const parsed = await resolveFakeProfitSevenSkinQueries(text);
+        if (parsed.error) {
+          await upsertBotMessage(ctx, `❌ ${parsed.error}`);
+          return;
+        }
+        await sendFakeSteamProfit(bot, {
+          items: parsed.items,
+          total: parsed.total,
+          anonymous: adminInput.attribution === "anon",
+          ownerTelegramId: adminInput.ownerTelegramId,
+        });
+        ctx.session.adminInput = null;
+        await upsertBotMessage(
+          ctx,
+          `✅ Фейк-профит отправлен в канал Steam. Сумма на макете: <b>$${parsed.total.toFixed(2)}</b>.`,
+          { parse_mode: "HTML" }
+        );
+      } catch (error) {
+        await upsertBotMessage(
+          ctx,
+          `❌ ${error?.response?.status === 403 ? "Steam отклонил запрос (403). Повторите позже или используйте ручной формат «иконка;цена;название»." : error.message}`
+        );
+      }
       return;
     }
 
